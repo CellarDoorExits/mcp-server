@@ -29,6 +29,9 @@
     "cellar-door-exit": "^0.1.0",
     "zod": "^3.23.0"
   },
+  "overrides": {
+    "hono": "^4.12.2"
+  },
   "devDependencies": {
     "@types/node": "^22.19.11",
     "typescript": "^5.9.3",
