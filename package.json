@@ -27,7 +27,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
     "cellar-door-entry": "^0.1.0",
-    "cellar-door-exit": "^0.1.0",
+    "cellar-door-exit": "^0.2.0",
     "zod": "^3.23.0"
   },
   "overrides": {
