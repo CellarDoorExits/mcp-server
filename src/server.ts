@@ -34,7 +34,7 @@ export interface CreateServerOptions {
 
 export function createServer(options: CreateServerOptions = {}): McpServer {
   const server = new McpServer({
-    name: "cellar-door-exit",
+    name: "cellar-door",
     version: "0.1.0",
   });
 
@@ -133,8 +133,11 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
 
       const et = exitType ? ExitType[exitType as keyof typeof ExitType] : ExitType.Voluntary;
 
+      // MC-06: subject is the session identity's DID, not the origin parameter.
+      // The origin identifies the platform being departed; the subject identifies
+      // the agent (signer) departing.
       const marker = createMarker({
-        subject: origin,
+        subject: sessionIdentity.did,
         origin,
         exitType: et,
       });
@@ -245,9 +248,11 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     async ({ exitMarkerJson, destination, admissionPolicy }) => {
       try {
-        // S-03: serverPolicy overrides any LLM-provided policy
-        // S-02: default to OPEN_DOOR when policy is omitted (never skip checks)
-        const policyName = options.serverPolicy ?? admissionPolicy ?? "OPEN_DOOR";
+        // S-03: serverPolicy overrides any LLM-provided policy.
+        // When no serverPolicy is configured, default to STRICT — never OPEN_DOOR —
+        // because an LLM can freely choose the most permissive policy or omit it
+        // entirely to bypass admission checks.
+        const policyName = options.serverPolicy ?? admissionPolicy ?? "STRICT";
         const exitMarker = fromJSON(exitMarkerJson);
         const admission = evaluateAdmission(exitMarker, admissionPresets[policyName]);
         if (!admission.admitted) {
