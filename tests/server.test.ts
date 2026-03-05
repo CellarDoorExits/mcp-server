@@ -68,7 +68,8 @@ describe("MCP Server", () => {
       },
     });
     const data = JSON.parse((result.content as any)[0].text);
-    expect(data.marker.subject).toBe("did:example:departing");
+    // MC-06: subject is the session identity's DID, not the origin parameter
+    expect(data.marker.subject).toMatch(/^did:key:z/);
     expect(data.signerDid).toMatch(/^did:key:z/);
   });
 
@@ -103,9 +104,10 @@ describe("MCP Server", () => {
     const exitData = JSON.parse((exitResult.content as any)[0].text);
     const exitMarkerJson = JSON.stringify(exitData.marker);
 
+    // S-03: Default is now STRICT, so pass OPEN_DOOR explicitly for this test
     const result = await client.callTool({
       name: "verify_and_admit",
-      arguments: { exitMarkerJson, destination: "did:example:dest" },
+      arguments: { exitMarkerJson, destination: "did:example:dest", admissionPolicy: "OPEN_DOOR" },
     });
     const data = JSON.parse((result.content as any)[0].text);
     expect(data.admitted).toBe(true);
