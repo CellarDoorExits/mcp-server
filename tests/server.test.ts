@@ -3,8 +3,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../src/server.js";
 
-async function setupClient() {
-  const server = createServer();
+async function setupClient(options?: Parameters<typeof createServer>[0]) {
+  const server = createServer(options);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   
   const client = new Client({ name: "test-client", version: "0.1.0" });
@@ -68,7 +68,8 @@ describe("MCP Server", () => {
       },
     });
     const data = JSON.parse((result.content as any)[0].text);
-    expect(data.marker.subject).toBe("did:example:departing");
+    // MC-06: subject is the session identity's DID, not the origin parameter
+    expect(data.marker.subject).toMatch(/^did:key:z/);
     expect(data.signerDid).toMatch(/^did:key:z/);
   });
 
@@ -103,9 +104,10 @@ describe("MCP Server", () => {
     const exitData = JSON.parse((exitResult.content as any)[0].text);
     const exitMarkerJson = JSON.stringify(exitData.marker);
 
+    // S-03: Default is now STRICT, so pass OPEN_DOOR explicitly for this test
     const result = await client.callTool({
       name: "verify_and_admit",
-      arguments: { exitMarkerJson, destination: "did:example:dest" },
+      arguments: { exitMarkerJson, destination: "did:example:dest", admissionPolicy: "OPEN_DOOR" },
     });
     const data = JSON.parse((result.content as any)[0].text);
     expect(data.admitted).toBe(true);
@@ -150,5 +152,180 @@ describe("MCP Server", () => {
     });
     const data = JSON.parse((result.content as any)[0].text);
     expect(data.valid).toBe(false);
+  });
+
+  // ─── PCR-25: serverPolicy override ──────────────────────────────────────
+
+  it("serverPolicy overrides LLM-provided admissionPolicy", async () => {
+    // Server locked to EMERGENCY_ONLY — voluntary exits should be rejected
+    const client = await setupClient({ serverPolicy: "EMERGENCY_ONLY" });
+
+    const exitResult = await client.callTool({
+      name: "quick_exit",
+      arguments: { origin: "did:example:override-test" },
+    });
+    const exitData = JSON.parse((exitResult.content as any)[0].text);
+    const exitMarkerJson = JSON.stringify(exitData.marker);
+
+    // LLM asks for OPEN_DOOR but server overrides to EMERGENCY_ONLY
+    const result = await client.callTool({
+      name: "verify_and_admit",
+      arguments: { exitMarkerJson, destination: "did:example:dest", admissionPolicy: "OPEN_DOOR" },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    expect(data.admitted).toBe(false);
+  });
+
+  it("serverPolicy overrides evaluate_admission too", async () => {
+    const client = await setupClient({ serverPolicy: "EMERGENCY_ONLY" });
+
+    const exitResult = await client.callTool({
+      name: "quick_exit",
+      arguments: { origin: "did:example:eval-override" },
+    });
+    const exitData = JSON.parse((exitResult.content as any)[0].text);
+    const exitMarkerJson = JSON.stringify(exitData.marker);
+
+    const result = await client.callTool({
+      name: "evaluate_admission",
+      arguments: { exitMarkerJson, policy: "OPEN_DOOR" },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    expect(data.admitted).toBe(false);
+    expect(data.policy).toBe("EMERGENCY_ONLY");
+  });
+
+  it("default policy is STRICT when no serverPolicy set", async () => {
+    const client = await setupClient();
+
+    const exitResult = await client.callTool({
+      name: "quick_exit",
+      arguments: { origin: "did:example:default-test" },
+    });
+    const exitData = JSON.parse((exitResult.content as any)[0].text);
+    const exitMarkerJson = JSON.stringify(exitData.marker);
+
+    // Don't pass admissionPolicy — should default to STRICT
+    const result = await client.callTool({
+      name: "verify_and_admit",
+      arguments: { exitMarkerJson, destination: "did:example:dest" },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    // STRICT requires modules that quickExit doesn't add, so should be rejected
+    expect(data.admitted).toBe(false);
+  });
+
+  // ─── PCR-25: verify_transfer tool ───────────────────────────────────────
+
+  it("verify_transfer validates a complete transfer", async () => {
+    const client = await setupClient();
+
+    // Create exit marker
+    const exitResult = await client.callTool({
+      name: "quick_exit",
+      arguments: { origin: "did:example:transfer-src" },
+    });
+    const exitData = JSON.parse((exitResult.content as any)[0].text);
+    const exitMarkerJson = JSON.stringify(exitData.marker);
+
+    // Create arrival via verify_and_admit (with OPEN_DOOR for this test)
+    const admitResult = await client.callTool({
+      name: "verify_and_admit",
+      arguments: { exitMarkerJson, destination: "did:example:transfer-dest", admissionPolicy: "OPEN_DOOR" },
+    });
+    const admitData = JSON.parse((admitResult.content as any)[0].text);
+    const arrivalMarkerJson = JSON.stringify(admitData.arrivalMarker);
+
+    // Verify transfer
+    const transferResult = await client.callTool({
+      name: "verify_transfer",
+      arguments: { exitMarkerJson, arrivalMarkerJson },
+    });
+    const data = JSON.parse((transferResult.content as any)[0].text);
+    expect(data.verified).toBe(true);
+    expect(data.continuity.valid).toBe(true);
+  });
+
+  it("verify_transfer rejects mismatched markers", async () => {
+    const client = await setupClient();
+
+    // Create two different exit markers
+    const exit1 = await client.callTool({
+      name: "quick_exit",
+      arguments: { origin: "did:example:src1" },
+    });
+    const exit2 = await client.callTool({
+      name: "quick_exit",
+      arguments: { origin: "did:example:src2" },
+    });
+    const exit1Json = JSON.stringify(JSON.parse((exit1.content as any)[0].text).marker);
+    const exit2Json = JSON.stringify(JSON.parse((exit2.content as any)[0].text).marker);
+
+    // Create arrival from exit2
+    const admitResult = await client.callTool({
+      name: "verify_and_admit",
+      arguments: { exitMarkerJson: exit2Json, destination: "did:example:dest", admissionPolicy: "OPEN_DOOR" },
+    });
+    const arrivalJson = JSON.stringify(JSON.parse((admitResult.content as any)[0].text).arrivalMarker);
+
+    // Try to verify exit1 with exit2's arrival — should fail
+    const result = await client.callTool({
+      name: "verify_transfer",
+      arguments: { exitMarkerJson: exit1Json, arrivalMarkerJson: arrivalJson },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    expect(data.verified).toBe(false);
+  });
+
+  // ─── PCR-25: Error cases ────────────────────────────────────────────────
+
+  it("verify_exit_marker handles invalid JSON gracefully", async () => {
+    const client = await setupClient();
+    const result = await client.callTool({
+      name: "verify_exit_marker",
+      arguments: { markerJson: "not valid json {{{" },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    expect(data.valid).toBe(false);
+    expect(data.error).toBeTruthy();
+  });
+
+  it("verify_and_admit handles invalid JSON gracefully", async () => {
+    const client = await setupClient();
+    const result = await client.callTool({
+      name: "verify_and_admit",
+      arguments: { exitMarkerJson: "{{bad", destination: "test", admissionPolicy: "OPEN_DOOR" },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    expect(data.admitted).toBe(false);
+    expect(data.error).toBeTruthy();
+  });
+
+  it("verify_transfer handles invalid exit JSON", async () => {
+    const client = await setupClient();
+    const result = await client.callTool({
+      name: "verify_transfer",
+      arguments: { exitMarkerJson: "bad", arrivalMarkerJson: "{}" },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    expect(data.verified).toBe(false);
+    expect(data.error).toBeTruthy();
+  });
+
+  it("verify_transfer handles invalid arrival JSON", async () => {
+    const client = await setupClient();
+    const exitResult = await client.callTool({
+      name: "quick_exit",
+      arguments: { origin: "did:example:err-test" },
+    });
+    const exitJson = JSON.stringify(JSON.parse((exitResult.content as any)[0].text).marker);
+
+    const result = await client.callTool({
+      name: "verify_transfer",
+      arguments: { exitMarkerJson: exitJson, arrivalMarkerJson: "not json" },
+    });
+    const data = JSON.parse((result.content as any)[0].text);
+    expect(data.verified).toBe(false);
+    expect(data.error).toBeTruthy();
   });
 });
