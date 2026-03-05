@@ -11,6 +11,7 @@
   "bugs": {
     "url": "https://github.com/CellarDoorExits/mcp-server/issues"
   },
+  "files": ["dist", "README.md", "LICENSE"],
   "type": "module",
   "bin": {
     "@cellar-door/mcp-server": "./dist/index.js",
