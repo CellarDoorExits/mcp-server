@@ -35,10 +35,93 @@ npm install @cellar-door/mcp-server
   "mcpServers": {
     "cellar-door": {
       "command": "npx",
-      "args": ["@cellar-door/mcp-server"]
+      "args": ["@cellar-door/mcp-server"],
+      "env": {
+        "CELLAR_DOOR_SERVER_POLICY": "STRICT"
+      }
     }
   }
 }
+```
+
+## ⚠️ Security: Admission Policy
+
+> **IMPORTANT:** By default, the server uses `STRICT` admission policy when no policy is specified by the LLM. This is intentional — an LLM can freely choose the most permissive policy (`OPEN_DOOR`) or omit the parameter entirely to bypass admission checks.
+>
+> **For production deployments**, always set a server-side policy override using one of:
+>
+> - **Environment variable:** `CELLAR_DOOR_SERVER_POLICY=STRICT` (or `EMERGENCY_ONLY`)
+> - **Constructor option:** `createServer({ serverPolicy: "STRICT" })`
+>
+> When `serverPolicy` is set, any LLM-provided `admissionPolicy` parameter is **ignored**.
+>
+> Available policies: `OPEN_DOOR`, `STRICT`, `EMERGENCY_ONLY`.
+
+### `CELLAR_DOOR_SERVER_POLICY`
+
+| Value | Behavior |
+|-------|----------|
+| `OPEN_DOOR` | Accept any departure with a valid signature |
+| `STRICT` | Voluntary only, <24h old, requires lineage + stateSnapshot modules |
+| `EMERGENCY_ONLY` | Accept only emergency exits |
+
+## Sample Conversation (Claude Desktop)
+
+Below is an example of how the tools work in a conversation with Claude Desktop:
+
+```
+User: I need to leave Platform X. Can you create a departure record?
+
+Claude: I'll create a signed EXIT marker for your departure from Platform X.
+
+→ Calls: quick_exit({ origin: "did:web:platform-x.example.com", reason: "Migrating to new platform" })
+
+Claude: Here's your signed departure marker:
+- ID: exit:abc123...
+- Subject: did:key:z6Mk...
+- Origin: did:web:platform-x.example.com
+- Exit Type: Voluntary
+- Signature: ✅ Verified
+
+The marker has been cryptographically signed. You can share this JSON with
+your destination platform to prove your voluntary departure.
+
+User: Now verify this on Platform Y and create my arrival.
+
+→ Calls: verify_and_admit({
+    exitMarkerJson: "{...the exit marker JSON...}",
+    destination: "did:web:platform-y.example.com",
+    admissionPolicy: "STRICT"
+  })
+
+Claude: Admission result:
+- ✅ Admitted
+- Arrival marker created with ID: urn:entry:def456...
+- Continuity verified between EXIT and ENTRY markers
+
+User: Can you verify the complete transfer?
+
+→ Calls: verify_transfer({
+    exitMarkerJson: "{...exit marker...}",
+    arrivalMarkerJson: "{...arrival marker...}"
+  })
+
+Claude: Transfer verification:
+- ✅ Both signatures valid
+- ✅ Subject continuity maintained
+- ✅ Temporal ordering correct
+- Transfer time: 2.3 seconds
+```
+
+## Programmatic Usage
+
+```typescript
+import { createServer } from "@cellar-door/mcp-server";
+
+const server = createServer({
+  // Lock admission policy server-side (recommended for production)
+  serverPolicy: "STRICT",
+});
 ```
 
 ## Example Tool Calls
@@ -71,6 +154,28 @@ Response:
   "admitted": true,
   "arrivalMarker": { "..." },
   "exitMarkerId": "exit:...",
+  "continuity": { "valid": true, "errors": [] }
+}
+```
+
+### Verify Transfer
+
+```json
+{
+  "name": "verify_transfer",
+  "arguments": {
+    "exitMarkerJson": "{...exit marker...}",
+    "arrivalMarkerJson": "{...arrival marker...}"
+  }
+}
+```
+
+Response:
+```json
+{
+  "verified": true,
+  "transferTime": 1234,
+  "errors": [],
   "continuity": { "valid": true, "errors": [] }
 }
 ```
