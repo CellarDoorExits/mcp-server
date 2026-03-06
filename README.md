@@ -1,5 +1,8 @@
 # @cellar-door/mcp-server
 
+> **⚠️ Pre-release software — no formal security audit has been conducted.** This project is published for transparency, review, and community feedback. It should not be used in production systems where security guarantees are required. If you find a vulnerability, please report it to hawthornhollows@gmail.com.
+
+
 MCP (Model Context Protocol) server that exposes [cellar-door-exit](https://www.npmjs.com/package/cellar-door-exit) and [cellar-door-entry](https://www.npmjs.com/package/cellar-door-entry) verifiable markers as AI-native tools. Any MCP-compatible client — Claude Desktop, Cursor, Windsurf, or custom agents — can create, sign, and verify EXIT and ENTRY markers.
 
 ## Tools
