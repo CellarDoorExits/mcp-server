@@ -82,7 +82,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     },
     async ({ origin, exitType, reason }) => {
       const et = exitType ? ExitType[exitType as keyof typeof ExitType] : undefined;
-      const result = quickExit(origin, {
+      const result = await quickExit(origin, {
         exitType: et,
         reason,
       });
