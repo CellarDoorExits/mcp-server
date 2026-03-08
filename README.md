@@ -1,9 +1,60 @@
 # @cellar-door/mcp-server
 
+[![npm version](https://img.shields.io/npm/v/@cellar-door/mcp-server)](https://www.npmjs.com/package/@cellar-door/mcp-server)
+[![tests](https://img.shields.io/badge/tests-19_passing-brightgreen)]()
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
+[![NIST](https://img.shields.io/badge/NIST-submitted-orange)](https://cellar-door.dev/nist/)
+
 > **⚠️ Pre-release software — no formal security audit has been conducted.** This project is published for transparency, review, and community feedback. It should not be used in production systems where security guarantees are required. If you find a vulnerability, please report it to hawthornhollows@gmail.com.
 
+Give any MCP-compatible AI (Claude, Cursor, Windsurf) the ability to create and verify agent departure records.
 
-MCP (Model Context Protocol) server that exposes [cellar-door-exit](https://www.npmjs.com/package/cellar-door-exit) and [cellar-door-entry](https://www.npmjs.com/package/cellar-door-entry) verifiable markers as AI-native tools. Any MCP-compatible client — Claude Desktop, Cursor, Windsurf, or custom agents — can create, sign, and verify EXIT and ENTRY markers.
+## 🗺️ Ecosystem
+
+| Package | Description | npm |
+|---------|-------------|-----|
+| [cellar-door-exit](https://github.com/CellarDoorExits/exit-door) | Core protocol — departure markers | [![npm](https://img.shields.io/npm/v/cellar-door-exit)](https://www.npmjs.com/package/cellar-door-exit) |
+| [cellar-door-entry](https://github.com/CellarDoorExits/entry-door) | Arrival markers + admission | [![npm](https://img.shields.io/npm/v/cellar-door-entry)](https://www.npmjs.com/package/cellar-door-entry) |
+| **[@cellar-door/mcp-server](https://github.com/CellarDoorExits/mcp-server)** | **MCP integration** ← you are here | [![npm](https://img.shields.io/npm/v/@cellar-door/mcp-server)](https://www.npmjs.com/package/@cellar-door/mcp-server) |
+| [@cellar-door/langchain](https://github.com/CellarDoorExits/langchain) | LangChain integration | [![npm](https://img.shields.io/npm/v/@cellar-door/langchain)](https://www.npmjs.com/package/@cellar-door/langchain) |
+| [@cellar-door/vercel-ai-sdk](https://github.com/CellarDoorExits/vercel-ai-sdk) | Vercel AI SDK integration | [![npm](https://img.shields.io/npm/v/@cellar-door/vercel-ai-sdk)](https://www.npmjs.com/package/@cellar-door/vercel-ai-sdk) |
+| [@cellar-door/openclaw-skill](https://github.com/CellarDoorExits/openclaw-skill) | OpenClaw agent skill | [![npm](https://img.shields.io/npm/v/@cellar-door/openclaw-skill)](https://www.npmjs.com/package/@cellar-door/openclaw-skill) |
+
+**[Paper](https://cellar-door.dev/paper/) · [Website](https://cellar-door.dev) · [NIST Submission](https://cellar-door.dev/nist/) · [Policy Briefs](https://cellar-door.dev/briefs/)**
+
+## Quick Start
+
+### Claude Desktop
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "cellar-door": {
+      "command": "npx",
+      "args": ["@cellar-door/mcp-server"],
+      "env": {
+        "CELLAR_DOOR_SERVER_POLICY": "STRICT"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop. You can now say:
+
+> "Create a departure record for my agent leaving platform-x.example.com"
+
+Claude will call the `quick_exit` tool and return a signed, verifiable EXIT marker.
+
+### Cursor / Windsurf
+
+```bash
+npm install @cellar-door/mcp-server
+```
+
+Point your MCP client at the server. It exposes 7 tools automatically.
 
 ## Tools
 
@@ -25,31 +76,9 @@ MCP (Model Context Protocol) server that exposes [cellar-door-exit](https://www.
 | `verify_transfer` | Verify a complete EXIT→ENTRY transfer chain |
 | `list_admission_policies` | List available admission policy presets |
 
-## Quick Start
-
-```bash
-npm install @cellar-door/mcp-server
-```
-
-### Claude Desktop
-
-```json
-{
-  "mcpServers": {
-    "cellar-door": {
-      "command": "npx",
-      "args": ["@cellar-door/mcp-server"],
-      "env": {
-        "CELLAR_DOOR_SERVER_POLICY": "STRICT"
-      }
-    }
-  }
-}
-```
-
 ## ⚠️ Security: Admission Policy
 
-> **IMPORTANT:** By default, the server uses `STRICT` admission policy when no policy is specified by the LLM. This is intentional — an LLM can freely choose the most permissive policy (`OPEN_DOOR`) or omit the parameter entirely to bypass admission checks.
+> **IMPORTANT:** By default, the server uses `STRICT` admission policy when no policy is specified by the LLM. This is intentional; an LLM can freely choose the most permissive policy (`OPEN_DOOR`) or omit the parameter entirely to bypass admission checks.
 >
 > **For production deployments**, always set a server-side policy override using one of:
 >
@@ -57,20 +86,14 @@ npm install @cellar-door/mcp-server
 > - **Constructor option:** `createServer({ serverPolicy: "STRICT" })`
 >
 > When `serverPolicy` is set, any LLM-provided `admissionPolicy` parameter is **ignored**.
->
-> Available policies: `OPEN_DOOR`, `STRICT`, `EMERGENCY_ONLY`.
 
-### `CELLAR_DOOR_SERVER_POLICY`
-
-| Value | Behavior |
-|-------|----------|
+| Policy | Behavior |
+|--------|----------|
 | `OPEN_DOOR` | Accept any departure with a valid signature |
 | `STRICT` | Voluntary only, <24h old, requires lineage + stateSnapshot modules |
 | `EMERGENCY_ONLY` | Accept only emergency exits |
 
 ## Sample Conversation (Claude Desktop)
-
-Below is an example of how the tools work in a conversation with Claude Desktop:
 
 ```
 User: I need to leave Platform X. Can you create a departure record?
@@ -86,34 +109,15 @@ Claude: Here's your signed departure marker:
 - Exit Type: Voluntary
 - Signature: ✅ Verified
 
-The marker has been cryptographically signed. You can share this JSON with
-your destination platform to prove your voluntary departure.
-
 User: Now verify this on Platform Y and create my arrival.
 
 → Calls: verify_and_admit({
-    exitMarkerJson: "{...the exit marker JSON...}",
+    exitMarkerJson: "{...}",
     destination: "did:web:platform-y.example.com",
     admissionPolicy: "STRICT"
   })
 
-Claude: Admission result:
-- ✅ Admitted
-- Arrival marker created with ID: urn:entry:def456...
-- Continuity verified between EXIT and ENTRY markers
-
-User: Can you verify the complete transfer?
-
-→ Calls: verify_transfer({
-    exitMarkerJson: "{...exit marker...}",
-    arrivalMarkerJson: "{...arrival marker...}"
-  })
-
-Claude: Transfer verification:
-- ✅ Both signatures valid
-- ✅ Subject continuity maintained
-- ✅ Temporal ordering correct
-- Transfer time: 2.3 seconds
+Claude: ✅ Admitted. Arrival marker created with continuity verified.
 ```
 
 ## Programmatic Usage
@@ -122,8 +126,7 @@ Claude: Transfer verification:
 import { createServer } from "@cellar-door/mcp-server";
 
 const server = createServer({
-  // Lock admission policy server-side (recommended for production)
-  serverPolicy: "STRICT",
+  serverPolicy: "STRICT",  // Lock admission policy server-side
 });
 ```
 
@@ -151,16 +154,6 @@ const server = createServer({
 }
 ```
 
-Response:
-```json
-{
-  "admitted": true,
-  "arrivalMarker": { "..." },
-  "exitMarkerId": "exit:...",
-  "continuity": { "valid": true, "errors": [] }
-}
-```
-
 ### Verify Transfer
 
 ```json
@@ -169,45 +162,6 @@ Response:
   "arguments": {
     "exitMarkerJson": "{...exit marker...}",
     "arrivalMarkerJson": "{...arrival marker...}"
-  }
-}
-```
-
-Response:
-```json
-{
-  "verified": true,
-  "transferTime": 1234,
-  "errors": [],
-  "continuity": { "valid": true, "errors": [] }
-}
-```
-
-### Evaluate Admission
-
-```json
-{
-  "name": "evaluate_admission",
-  "arguments": {
-    "exitMarkerJson": "{...}",
-    "policy": "STRICT"
-  }
-}
-```
-
-### List Admission Policies
-
-```json
-{ "name": "list_admission_policies", "arguments": {} }
-```
-
-Response:
-```json
-{
-  "policies": {
-    "OPEN_DOOR": { "description": "Accept everything with a valid signature", "requireVerifiedDeparture": true },
-    "STRICT": { "description": "Voluntary only, <24h old, requires lineage + stateSnapshot", "..." },
-    "EMERGENCY_ONLY": { "description": "Accept only emergency exits", "..." }
   }
 }
 ```
