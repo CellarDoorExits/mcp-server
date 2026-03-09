@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   quickExit,
+  quickCounterSign,
   createMarker,
   signMarker,
   verifyMarker,
@@ -208,6 +209,55 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
                 {
                   valid: false,
                   error: err.message || "Verification failed",
+                },
+                null,
+                2
+              ),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Tool: counter_sign_exit_marker
+  server.tool(
+    "counter_sign_exit_marker",
+    "Add a counter-signature to a signed EXIT marker, attesting agreement with the departure record",
+    {
+      markerJson: z.string().describe("JSON string of the signed EXIT marker to counter-sign"),
+      role: z.string().optional().describe("Role label for the counter-signer (e.g. 'origin', 'platform')"),
+    },
+    async ({ markerJson, role }) => {
+      try {
+        const marker = fromJSON(markerJson);
+        const result = quickCounterSign(marker, role ? { role } : undefined);
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  marker: JSON.parse(toJSON(result.marker)),
+                  counterSignerDid: result.identity.did,
+                  counterpartyAcks: result.marker.dispute?.counterpartyAcks?.length ?? 0,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  error: err.message || "Counter-signing failed",
                 },
                 null,
                 2

@@ -23,6 +23,7 @@ describe("MCP Server", () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "counter_sign_exit_marker",
       "create_exit_marker",
       "evaluate_admission",
       "generate_identity",
