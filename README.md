@@ -171,6 +171,12 @@ const server = createServer({
 }
 ```
 
+## Production Deployment
+
+> ⚠️ **Authentication**: The MCP server does not include built-in authentication.
+> In production, deploy behind an authenticated reverse proxy or API gateway.
+> Do not expose MCP tools directly to untrusted clients.
+
 ## ⚠️ Disclaimer
 
 > **WARNING:** Automated admission decisions should be reviewed by platform operators. This integration does not constitute legal advice. Platforms are responsible for their own admission policies and the consequences of admitting agents.
